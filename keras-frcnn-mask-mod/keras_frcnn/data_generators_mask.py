@@ -354,7 +354,7 @@ def get_anchor_gt_mask(all_img_data, class_count, C, backend, mode='train'):
                     y_rpn_cls = np.transpose(y_rpn_cls, (0, 2, 3, 1))
                     y_rpn_regr = np.transpose(y_rpn_regr, (0, 2, 3, 1))
 
-                yield np.copy(x_img), [np.copy(y_rpn_cls), np.copy(y_rpn_regr)], img_data_aug
+                yield np.copy(x_img), [np.copy(y_rpn_cls), np.copy(y_rpn_regr)], img_data_aug, np.copy(x_msk_i), np.copy(x_msk_s)
 
             except Exception as e:
                 print(e)

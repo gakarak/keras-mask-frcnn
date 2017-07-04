@@ -23,6 +23,8 @@ import libs.nets.resnet_v1 as resnet_v1
 from train.train_utils import _configure_learning_rate, _configure_optimizer, \
   _get_variables_to_train, _get_init_fn, get_var_list_to_restore
 
+import libs.layers.mask
+
 resnet50 = resnet_v1.resnet_v1_50
 FLAGS = tf.app.flags.FLAGS
 
@@ -75,7 +77,31 @@ if __name__ == '__main__':
             #
             outputs['image_np'] = image
             outputs['gt_boxes_np'] = gt_boxes
-            tret = sess.run(outputs)
+            outputs['gt_boxes'] = gt_boxes
+            outputs['gt_masks'] = gt_masks
+            outputs['num_instances'] = num_instances
+            outputs['img_id'] = img_id
+            #
+            for dgbi in range(5):
+                tret = sess.run(outputs)
+                # [HARD-DEBUG]
+                dbg_gt_boxes = tret['gt_boxes']
+                dbg_gt_masks = tret['gt_masks']
+                dbg_rois = tret['roi']['box']
+                dbg_mask_height = 28
+                dbg_mask_width  = 28
+                dbg_num_classes = 81
+                dbg_num_instances = tret['num_instances']
+                dbg_img_id = tret['img_id']
+                msk_encode = libs.layers.mask.encode(
+                    gt_masks=dbg_gt_masks,
+                    gt_boxes=dbg_gt_boxes,
+                    rois=dbg_rois,
+                    num_classes=dbg_num_classes,
+                    mask_height=dbg_mask_height,
+                    mask_width=dbg_mask_width
+                )
+                print ('-')
             #
             realBBox = tret['gt_boxes_np']
             imagef32 = tret['image_np']

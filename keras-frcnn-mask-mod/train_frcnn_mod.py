@@ -19,8 +19,35 @@ from keras_frcnn import losses as losses
 from keras_frcnn import resnet as nn
 import keras_frcnn.roi_helpers as roi_helpers
 from keras.utils import generic_utils
+import cv2
 
 sys.setrecursionlimit(40000)
+
+###############################
+def buildImageWithRotScaleAroundCenter(pimg, pcnt, pangDec, pscale, pcropSize, isDebug=False, pborderMode = cv2.BORDER_REPLICATE):
+    # (1) precalc parameters
+    angRad = (np.pi / 180.) * pangDec
+    cosa = np.cos(angRad)
+    sina = np.sin(angRad)
+    # (2) prepare separate affine transformation matrices
+    matShiftB = np.array([[1., 0., -pcnt[0]], [0., 1., -pcnt[1]], [0., 0., 1.]])
+    matRot = np.array([[cosa, sina, 0.], [-sina, cosa, 0.], [0., 0., 1.]])
+    matShiftF = np.array([[1., 0., +pcnt[0]], [0., 1., +pcnt[1]], [0., 0., 1.]])
+    matScale = np.array([[pscale, 0., 0.], [0., pscale, 0.], [0., 0., 1.]])
+    matShiftCrop = np.array([[1., 0., pcropSize[0] / 2.], [0., 1., pcropSize[1] / 2.], [0., 0., 1.]])
+    # matTotal_OCV = matShiftF.dot(matRot.dot(matScale.dot(matShiftB)))
+    # (3) build total-matrix
+    matTotal = matShiftCrop.dot(matRot.dot(matScale.dot(matShiftB)))
+    if isDebug:
+        print ('(1) mat-shift-backward = \n{0}'.format(matShiftB))
+        print ('(2) mat-scale = \n{0}'.format(matScale))
+        print ('(3) mat-rot = \n{0}'.format(matRot))
+        print ('(4) mat-shift-forward = \n{0}'.format(matShiftF))
+        print ('(5) mat-shift-crop = \n{0}'.format(matShiftCrop))
+        print ('---\n(*) mat-total = \n{0}'.format(matTotal))
+    # (4) warp image with total affine-transform
+    imgRet = cv2.warpAffine(pimg, matTotal[:2, :], pcropSize, borderMode=pborderMode)
+    return imgRet
 
 ###############################
 def parseArgs(pargs):
@@ -204,7 +231,7 @@ if __name__ == '__main__':
                     if mean_overlapping_bboxes == 0:
                         print('RPN is not producing bounding boxes that overlap the ground truth boxes. Check RPN settings or keep training.')
 
-                X, Y, img_data = data_gen_train.next()
+                X, Y, img_data, Mi, Ms = data_gen_train.next()
 
                 loss_rpn = model_rpn.train_on_batch(X, Y)
 
@@ -255,6 +282,29 @@ if __name__ == '__main__':
                         sel_samples = random.choice(neg_samples)
                     else:
                         sel_samples = random.choice(pos_samples)
+
+                nrow_msk, ncol_msk = Mi.shape
+                sizMskNetROI = 14 * 3
+                lstROI_xywh = X2[:, sel_samples, :][0]
+                numROI = lstROI_xywh.shape[0]
+                gt_msk_i = np.zeros((numROI, sizMskNetROI, sizMskNetROI))
+                for iroi in range(numROI):
+                    troi = lstROI_xywh[iroi]
+                    tr1 = int(troi[1])
+                    tc1 = int(troi[0])
+                    tdr = int(troi[3])
+                    tdc = int(troi[2])
+                    if tr1<0:
+                        tr1 = 0
+                    if tc1<0:
+                        tc1 = 0
+                    if tr1>=(nrow_msk - tdr):
+                        tr1 = nrow_msk - tdr - 1
+                    if tc1>=(ncol_msk - tdc):
+                        tc1 = ncol_msk - tdc - 1
+
+
+
 
                 loss_class = model_classifier.train_on_batch([X, X2[:, sel_samples, :]], [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
 
