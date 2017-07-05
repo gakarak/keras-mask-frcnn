@@ -4,9 +4,11 @@ __author__ = 'ar'
 
 # code from github-repo: https://github.com/kuza55/keras-extras/
 
-from keras.layers import merge
 from keras.layers.core import Lambda
 from keras.models import Model
+
+from keras.layers import merge
+from keras.layers import Concatenate
 
 import tensorflow as tf
 from tensorflow.python.client import device_lib as tf_dev_lib
@@ -36,6 +38,9 @@ def make_parallel(model, gpu_count=None):
     num_gpus = len(list_gpus)
     if num_gpus<1:
         raise Exception('Invalid number available GPUs for training: #{0}'.format(num_gpus))
+    elif num_gpus == 1:
+        print ('!!! WARNING !!! you have only one GPU, model is not modified!')
+        return model
     outputs_all = []
     for i in range(len(model.outputs)):
         outputs_all.append([])
@@ -47,7 +52,7 @@ def make_parallel(model, gpu_count=None):
                 # Slice each input into a piece for processing on this GPU
                 for x in model.inputs:
                     input_shape = tuple(x.get_shape().as_list())[1:]
-                    slice_n = Lambda(get_slice, output_shape=input_shape, arguments={'idx': i, 'parts': gpu_count})(x)
+                    slice_n = Lambda(get_slice, output_shape=input_shape, arguments={'idx': i, 'parts': num_gpus})(x)
                     inputs.append(slice_n)
                 outputs = model(inputs)
                 if not isinstance(outputs, list):
@@ -63,8 +68,9 @@ def make_parallel(model, gpu_count=None):
     with tf.device('/cpu:0'):
         merged = []
         for outputs in outputs_all:
-            merged.append(merge(outputs, mode='concat', concat_axis=0))
-        return Model(input=model.inputs, output=merged)
+            # merged.append(merge(outputs, mode='concat', concat_axis=0))
+            merged.append(Concatenate(axis=0)(outputs))
+        return Model(inputs=model.inputs, outputs=merged)
 
 if __name__ == '__main__':
     pass
