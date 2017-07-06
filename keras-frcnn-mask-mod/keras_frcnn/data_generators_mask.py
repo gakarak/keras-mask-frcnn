@@ -326,22 +326,28 @@ def get_anchor_gt_mask(all_img_data, class_count, C, backend, mode='train'):
 
                 # resize the image so that smalles side is length = 600px
                 x_img = cv2.resize(x_img, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
-                x_msk_i = cv2.resize(x_msk_i, (resized_width, resized_height), interpolation=cv2.INTER_NEAREST)
-                x_msk_s = cv2.resize(x_msk_s, (resized_width, resized_height), interpolation=cv2.INTER_NEAREST)
-
+                # x_msk_i = cv2.resize(x_msk_i, (resized_width, resized_height), interpolation=cv2.INTER_NEAREST)
+                # x_msk_s = cv2.resize(x_msk_s, (resized_width, resized_height), interpolation=cv2.INTER_NEAREST)
+                x_msk_i_dbg = cv2.resize(x_msk_i, (resized_width, resized_height), interpolation=cv2.INTER_NEAREST)
                 try:
                     y_rpn_cls, y_rpn_regr = calc_rpn(C, img_data_aug, width, height, resized_width, resized_height)
                 except:
                     continue
 
+                numInstances = len(img_data_aug['bboxes'])
+                x_msk_i = np.zeros([numInstances] + list(x_msk_i_dbg.shape), dtype=np.float32)
+                for ii in range(numInstances):
+                    x_msk_i[ii] = (x_msk_i_dbg == (ii + 1))
+
                 # Zero-center by mean pixel, and preprocess image
 
                 x_img = x_img[:,:, (2, 1, 0)]  # BGR -> RGB
                 x_img = x_img.astype(np.float32)
-                x_img[:, :, 0] -= C.img_channel_mean[0]
-                x_img[:, :, 1] -= C.img_channel_mean[1]
-                x_img[:, :, 2] -= C.img_channel_mean[2]
-                x_img /= C.img_scaling_factor
+                #FIXME: redesign image preprocessing! i think, that better idea is: img' = (img/127.5) - 1.0
+                # x_img[:, :, 0] -= C.img_channel_mean[0]
+                # x_img[:, :, 1] -= C.img_channel_mean[1]
+                # x_img[:, :, 2] -= C.img_channel_mean[2]
+                # x_img /= C.img_scaling_factor
 
                 # FIXME: WTF??? remove double transposing operations
                 x_img = np.transpose(x_img, (2, 0, 1))
@@ -354,7 +360,7 @@ def get_anchor_gt_mask(all_img_data, class_count, C, backend, mode='train'):
                     y_rpn_cls = np.transpose(y_rpn_cls, (0, 2, 3, 1))
                     y_rpn_regr = np.transpose(y_rpn_regr, (0, 2, 3, 1))
 
-                yield np.copy(x_img), [np.copy(y_rpn_cls), np.copy(y_rpn_regr)], img_data_aug, np.copy(x_msk_i), np.copy(x_msk_s)
+                yield np.copy(x_img), [np.copy(y_rpn_cls), np.copy(y_rpn_regr)], img_data_aug, np.copy(x_msk_i), np.copy(x_msk_i_dbg)
 
             except Exception as e:
                 print(e)

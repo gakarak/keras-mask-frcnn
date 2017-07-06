@@ -52,6 +52,7 @@ def buildImageWithRotScaleAroundCenter(pimg, pcnt, pangDec, pscale, pcropSize, i
 ###############################
 def parseArgs(pargs):
     parser = OptionParser()
+    parser.add_option("-w", "--mask_size", dest="mask_size", help="Network Mask output size: mask_size x mask_size", default=68)
     parser.add_option("-p", "--path", dest="train_path", help="Path to training data.")
     parser.add_option("-o", "--parser", dest="parser", help="Parser to use. One of simple or pascal_voc",
                       default="pascal_voc"),
@@ -97,6 +98,7 @@ if __name__ == '__main__':
         raise ValueError("Command line option parser must be one of 'pascal_voc' or 'simple'")
     # pass the settings from the command line, and persist them in the config object
     C = config.Config()
+    C.maskSize = int(options.mask_size)
     C.num_rois = int(options.num_rois)
     C.use_horizontal_flips = bool(options.horizontal_flips)
     C.use_vertical_flips = bool(options.vertical_flips)
@@ -140,6 +142,10 @@ if __name__ == '__main__':
     # data_gen_val = data_generators.get_anchor_gt(val_imgs, classes_count, C, K.image_dim_ordering(), mode='val')
     data_gen_train = data_generators_mask.get_anchor_gt_mask(train_imgs, classes_count, C, K.image_dim_ordering(), mode='train')
     data_gen_val = data_generators_mask.get_anchor_gt_mask(val_imgs, classes_count, C, K.image_dim_ordering(), mode='val')
+
+    # while True:
+    #     xxx = data_gen_train.next()
+    #     print ('-')
 
     if K.image_dim_ordering() == 'th':
         input_shape_img = (3, None, None)
@@ -222,6 +228,7 @@ if __name__ == '__main__':
         progbar = generic_utils.Progbar(epoch_length)
         print('Epoch {}/{}'.format(epoch_num + 1, num_epochs))
 
+        isRoundRoiPool = False
         while True:
             try:
                 if len(rpn_accuracy_rpn_monitor) == epoch_length and C.verbose:
@@ -231,16 +238,23 @@ if __name__ == '__main__':
                     if mean_overlapping_bboxes == 0:
                         print('RPN is not producing bounding boxes that overlap the ground truth boxes. Check RPN settings or keep training.')
 
-                X, Y, img_data, Mi, Ms = data_gen_train.next()
+                # X, Y, img_data, Mi, Ms = data_gen_train.next()
+                X, Y, img_data, Mi, Mi_dbg = data_gen_train.next()
 
                 loss_rpn = model_rpn.train_on_batch(X, Y)
 
                 P_rpn = model_rpn.predict_on_batch(X)
 
-                R = roi_helpers.rpn_to_roi(P_rpn[0], P_rpn[1], C, K.image_dim_ordering(), use_regr=True, overlap_thresh=0.7, max_boxes=300)
+                R = roi_helpers.rpn_to_roi(P_rpn[0], P_rpn[1],
+                                           C, K.image_dim_ordering(),
+                                           use_regr=True,
+                                           overlap_thresh=0.7,
+                                           max_boxes=300,
+                                           isRounded=isRoundRoiPool)
 
                 # note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
-                X2, Y1, Y2 = roi_helpers.calc_iou(R, img_data, C, class_mapping)
+                X2, Y1, Y2, BBOX_IDX = roi_helpers.calc_iou(R, img_data, C, class_mapping,
+                                                            isRounded=isRoundRoiPool)
 
                 if X2 is None:
                     rpn_accuracy_rpn_monitor.append(0)
@@ -283,8 +297,8 @@ if __name__ == '__main__':
                     else:
                         sel_samples = random.choice(pos_samples)
 
-                nrow_msk, ncol_msk = Mi.shape
-                sizMskNetROI = 14 * 3
+                num_gt_roi, num_nrow_msk, ncol_msk = Mi.shape
+                sizMskNetROI = C.maskSize
                 lstROI_xywh = X2[:, sel_samples, :][0]
                 numROI = lstROI_xywh.shape[0]
                 gt_msk_i = np.zeros((numROI, sizMskNetROI, sizMskNetROI))

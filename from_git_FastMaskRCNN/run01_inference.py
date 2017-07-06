@@ -82,7 +82,7 @@ if __name__ == '__main__':
             outputs['num_instances'] = num_instances
             outputs['img_id'] = img_id
             #
-            for dgbi in range(5):
+            for dgbi in range(15):
                 tret = sess.run(outputs)
                 # [HARD-DEBUG]
                 dbg_gt_boxes = tret['gt_boxes']
@@ -101,6 +101,54 @@ if __name__ == '__main__':
                     mask_height=dbg_mask_height,
                     mask_width=dbg_mask_width
                 )
+                msk_encode_l = msk_encode[0]
+                msk_encode_1 = msk_encode[1]
+                msk_encode_2 = msk_encode[2]
+                plt.figure()
+                for ii in range(msk_encode_l.shape[0]):
+                    lst_bg = []
+                    lst_fg = []
+                    tlbl = msk_encode_l[ii]
+                    if tlbl<0:
+                        plt.subplot(2, 2, 1)
+                        plt.plot(np.sum(msk_encode_1[ii], axis=(0, 1)))
+                        plt.subplot(2, 2, 2)
+                        plt.plot(np.sum(msk_encode_2[ii], axis=(0, 1)))
+                        lst_bg.append('id={0}/{1}'.format(ii, tlbl))
+                    else:
+                        plt.subplot(2, 2, 3)
+                        plt.plot(np.sum(msk_encode_1[ii], axis=(0, 1)))
+                        plt.subplot(2, 2, 4)
+                        plt.plot(np.sum(msk_encode_2[ii], axis=(0, 1)))
+                        lst_fg.append('id={0}/{1}'.format(ii, tlbl))
+                plt.subplot(2, 2, 1), plt.legend(lst_bg)
+                plt.subplot(2, 2, 3), plt.legend(lst_fg)
+                # plt.show()
+                #
+                tmsk = dbg_gt_masks.copy()
+                for ii in range(dbg_gt_masks.shape[0]):
+                    tmsk[ii] *= (ii+1)
+                tmsk = np.sum(tmsk, axis=0)
+                #
+                plt.figure()
+                plt.subplot(1, 2, 1)
+                plt.imshow(0.5 * tret['image_np'][0] + 0.5)
+                for ii in range(dbg_gt_masks.shape[0]):
+                    tbox = dbg_gt_boxes[ii]
+                    txy = (tbox[0], tbox[1])
+                    tw = tbox[2] - tbox[0]
+                    th = tbox[3] - tbox[1]
+                    plt.gcf().gca().add_artist(plt.Rectangle(txy, tw, th, edgecolor='r', fill=False))
+                plt.subplot(1, 2, 2)
+                plt.imshow(tmsk)
+                for ii in range(dbg_gt_masks.shape[0]):
+                    tbox = dbg_gt_boxes[ii]
+                    txy = (tbox[0], tbox[1])
+                    tw = tbox[2] - tbox[0]
+                    th = tbox[3] - tbox[1]
+                    plt.gcf().gca().add_artist(plt.Rectangle(txy, tw, th, edgecolor='r', fill=False))
+                #
+                plt.show()
                 print ('-')
             #
             realBBox = tret['gt_boxes_np']
