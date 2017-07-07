@@ -9,7 +9,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 
 from keras.layers import Input, Add, Dense, Activation, Flatten, Convolution2D, MaxPooling2D, ZeroPadding2D, \
-    AveragePooling2D, TimeDistributed
+    AveragePooling2D, TimeDistributed, UpSampling2D, Conv2D, Reshape
 
 from keras import backend as K
 
@@ -219,24 +219,47 @@ def rpn(base_layers,num_anchors):
     return [x_class, x_regr, base_layers]
 
 def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=False):
-
     # compile times on theano tend to be very high, so we use smaller ROI pooling regions to workaround
-
     if K.backend() == 'tensorflow':
         pooling_regions = 14
         input_shape = (num_rois,14,14,1024)
     elif K.backend() == 'theano':
         pooling_regions = 7
         input_shape = (num_rois,1024,7,7)
-
+    else:
+        raise Exception('Unknown (unsupported) Keras backend!')
     # out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
     out_roi_pool = RoiAligngConv_V1(pooling_regions, num_rois)([base_layers, input_rois])
     out = classifier_layers(out_roi_pool, input_shape=input_shape, trainable=True)
-
     out = TimeDistributed(Flatten())(out)
-
     out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
     # note: no regression target for bg class
     out_regr = TimeDistributed(Dense(4 * (nb_classes-1), activation='linear', kernel_initializer='zero'), name='dense_regress_{}'.format(nb_classes))(out)
     return [out_class, out_regr]
 
+def maskout(base_layers, input_rois, num_rois, num_upsampl = 2, size_upsampl = (2,2), nb_classes = 21, trainable=False):
+    # compile times on theano tend to be very high, so we use smaller ROI pooling regions to workaround
+    if K.backend() == 'tensorflow':
+        pooling_regions = 14
+        input_shape = (num_rois,14,14,1024)
+    elif K.backend() == 'theano':
+        raise Exception('Theano backend not supported yet!')
+        # pooling_regions = 7
+        # input_shape = (num_rois,1024,7,7)
+    else:
+        raise Exception('Unknown (unsupported) Keras backend!')
+    # out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
+    out_roi_pool = RoiAligngConv_V1(pooling_regions, num_rois)([base_layers, input_rois])
+    x = out_roi_pool
+    for xx in range(2):
+        x = TimeDistributed(UpSampling2D(size=size_upsampl))(x)
+        x = TimeDistributed(Conv2D(filters=128, kernel_size=(3,3), padding='same', activation='relu'))(x)
+    x = TimeDistributed(Conv2D(filters=nb_classes, kernel_size=(1,1), padding='same', activation='sigmoid'))(x)
+    out_msk_flat = TimeDistributed(Flatten())(x)
+    return out_msk_flat
+
+    # out = classifier_layers(out_roi_pool, input_shape=input_shape, trainable=True)
+    # out = TimeDistributed(Flatten())(out)
+    # out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
+    # out_regr = TimeDistributed(Dense(4 * (nb_classes-1), activation='linear', kernel_initializer='zero'), name='dense_regress_{}'.format(nb_classes))(out)
+    # return [out_class, out_regr]

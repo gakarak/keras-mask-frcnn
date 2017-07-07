@@ -52,7 +52,7 @@ def buildImageWithRotScaleAroundCenter(pimg, pcnt, pangDec, pscale, pcropSize, i
 ###############################
 def parseArgs(pargs):
     parser = OptionParser()
-    parser.add_option("-w", "--mask_size", dest="mask_size", help="Network Mask output size: mask_size x mask_size", default=68)
+    parser.add_option("-w", "--mask_size", dest="mask_size", help="Network Mask output size: mask_size x mask_size", default=(14*(2**2)))
     parser.add_option("-p", "--path", dest="train_path", help="Path to training data.")
     parser.add_option("-o", "--parser", dest="parser", help="Parser to use. One of simple or pascal_voc",
                       default="pascal_voc"),
@@ -117,6 +117,9 @@ if __name__ == '__main__':
 
     inv_map = {v: k for k, v in class_mapping.iteritems()}
 
+    numClasses   = len(C.class_mapping)
+    numClassesFG = len(C.class_mapping) - 1
+
     print('Training images per class:')
     pprint.pprint(classes_count)
     print('Num classes (including bg) = {}'.format(len(classes_count)))
@@ -162,31 +165,38 @@ if __name__ == '__main__':
     num_anchors = len(C.anchor_box_scales) * len(C.anchor_box_ratios)
     rpn = nn.rpn(shared_layers, num_anchors)
 
-    classifier = nn.classifier(shared_layers, roi_input, C.num_rois, nb_classes=len(classes_count), trainable=True)
+    classifier = nn.classifier(shared_layers, roi_input, C.num_rois, nb_classes=numClasses, trainable=True)
+    maskout = nn.maskout(shared_layers, roi_input, C.num_rois, nb_classes=numClassesFG, trainable=True)
 
     model_rpn = Model(img_input, rpn[:2])
     model_classifier = Model([img_input, roi_input], classifier)
+    model_maskout = Model([img_input, roi_input], maskout)
 
     # this is a model that holds both the RPN and the classifier, used to load/save weights for the models
-    model_all = Model([img_input, roi_input], rpn[:2] + classifier)
+    model_all = Model([img_input, roi_input], rpn[:2] + classifier + [maskout])
     if isDebug:
         fimg_rpn = 'tmp_model_rpn.png'
         fimg_cls = 'tmp_model_classifier.png'
+        fimg_msk = 'tmp_model_maskout.png'
         fimg_all = 'tmp_model_all.png'
         keras.utils.plot_model(model_rpn,        fimg_rpn, show_shapes=True)
         keras.utils.plot_model(model_classifier, fimg_cls, show_shapes=True)
+        keras.utils.plot_model(model_maskout,    fimg_msk, show_shapes=True)
         keras.utils.plot_model(model_all,        fimg_all, show_shapes=True)
         #
-        # plt.subplot(1, 3, 1)
-        plt.figure()
+        plt.subplot(1, 4, 1)
+        # plt.figure()
         plt.imshow(skio.imread(fimg_rpn))
         plt.title('network: rpn')
-        # plt.subplot(1, 3, 2)
-        plt.figure()
+        plt.subplot(1, 4, 2)
+        # plt.figure()
         plt.imshow(skio.imread(fimg_cls))
         plt.title('network: classifier')
-        # plt.subplot(1, 3, 3)
-        plt.figure()
+        plt.subplot(1, 4, 3)
+        plt.imshow(skio.imread(fimg_msk))
+        plt.title('network: mask')
+        # plt.figure()
+        plt.subplot(1, 4, 4)
         plt.imshow(skio.imread(fimg_all))
         plt.title('network: all')
         plt.gcf().subplots_adjust(wspace=0, hspace=0)
@@ -204,15 +214,22 @@ if __name__ == '__main__':
 
     optimizer = Adam(lr=1e-4)
     optimizer_classifier = Adam(lr=1e-4)
-    model_rpn.compile(optimizer=optimizer, loss=[losses.rpn_loss_cls(num_anchors), losses.rpn_loss_regr(num_anchors)])
-    model_classifier.compile(optimizer=optimizer_classifier, loss=[losses.class_loss_cls, losses.class_loss_regr(len(classes_count)-1)], metrics={'dense_class_{}'.format(len(classes_count)): 'accuracy'})
+    optimizer_maskout = Adam(lr=1e-4)
+    model_rpn.compile(optimizer=optimizer,
+                             loss=[losses.rpn_loss_cls(num_anchors), losses.rpn_loss_regr(num_anchors)])
+    model_classifier.compile(optimizer=optimizer_classifier,
+                             loss=[losses.class_loss_cls, losses.class_loss_regr(len(classes_count)-1)],
+                             metrics={'dense_class_{}'.format(len(classes_count)): 'accuracy'})
+    model_maskout.compile(optimizer=optimizer_maskout,
+                             loss='binary_crossentropy', metrics=['accuracy'])
     model_all.compile(optimizer='sgd', loss='mae')
 
     epoch_length = 1000
     num_epochs = int(options.num_epochs)
     iter_num = 0
 
-    losses = np.zeros((epoch_length, 5))
+    # losses = np.zeros((epoch_length, 5))
+    losses = np.zeros((epoch_length, 5 + 2)) # mask-loss & mask-acc
     rpn_accuracy_rpn_monitor = []
     rpn_accuracy_for_epoch = []
     start_time = time.time()
@@ -297,30 +314,34 @@ if __name__ == '__main__':
                     else:
                         sel_samples = random.choice(pos_samples)
 
-                num_gt_roi, num_nrow_msk, ncol_msk = Mi.shape
-                sizMskNetROI = C.maskSize
-                lstROI_xywh = X2[:, sel_samples, :][0]
-                numROI = lstROI_xywh.shape[0]
-                gt_msk_i = np.zeros((numROI, sizMskNetROI, sizMskNetROI))
-                for iroi in range(numROI):
-                    troi = lstROI_xywh[iroi]
-                    tr1 = int(troi[1])
-                    tc1 = int(troi[0])
-                    tdr = int(troi[3])
-                    tdc = int(troi[2])
-                    if tr1<0:
-                        tr1 = 0
-                    if tc1<0:
-                        tc1 = 0
-                    if tr1>=(nrow_msk - tdr):
-                        tr1 = nrow_msk - tdr - 1
-                    if tc1>=(ncol_msk - tdc):
-                        tc1 = ncol_msk - tdc - 1
-
-
-
+                # build GT-masks for Mask-head
+                numROI = len(sel_samples)
+                sizeOutMask = C.maskSize
+                num_gt_roi, nrow_msk, ncol_msk = Mi.shape
+                gt_msk_i = np.zeros((numROI, sizeOutMask, sizeOutMask, numClassesFG), dtype=np.float32)
+                #
+                for ismplIdx, smplIdx in enumerate(sel_samples):
+                    #FIXME: check ooptimal variant
+                    # (1) possible variant #1 : generate mask only for class-boxes
+                    # (2) possible variant #2 : generate mask for all boxes based on nearest to class ROI
+                    # isClsBG = (Y1[0][smplIdx,-1]>0)
+                    isClsBG = False
+                    if isClsBG:
+                        pass
+                    else:
+                        bboxIdx = BBOX_IDX[smplIdx]
+                        tclsName = img_data['bboxes'][bboxIdx]['class']
+                        tclsIdx = C.class_mapping[tclsName]
+                        tbbox_x, tbbox_y, tbbox_w, tbbox_h = np.round(C.rpn_stride * X2[0][smplIdx]).astype(np.int)
+                        tbbox_x, tbbox_y, tbbox_w, tbbox_h = roi_helpers.checkROI(tbbox_x, tbbox_y, tbbox_w, tbbox_h, ncol_msk, nrow_msk)
+                        tmsk_i = Mi[bboxIdx]
+                        tmsk_i_crop = tmsk_i[tbbox_y:tbbox_y + tbbox_h, tbbox_x:tbbox_x + tbbox_w]
+                        tmsk_i_crop_resiz = cv2.resize(tmsk_i_crop, (sizeOutMask, sizeOutMask), interpolation=cv2.INTER_NEAREST)
+                        gt_msk_i[ismplIdx,:,:,tclsIdx] = tmsk_i_crop_resiz
+                print ('-')
 
                 loss_class = model_classifier.train_on_batch([X, X2[:, sel_samples, :]], [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
+                loss_mask  = model_maskout.train_on_batch([X, X2[:, sel_samples, :]], np.expand_dims(gt_msk_i.reshape([gt_msk_i.shape[0],-1]), axis=0))
 
                 losses[iter_num, 0] = loss_rpn[1]
                 losses[iter_num, 1] = loss_rpn[2]
@@ -329,11 +350,16 @@ if __name__ == '__main__':
                 losses[iter_num, 3] = loss_class[2]
                 losses[iter_num, 4] = loss_class[3]
 
+                # mask loss & mask accuracy
+                losses[iter_num, 5] = loss_mask[0]
+                losses[iter_num, 6] = loss_mask[1]
                 iter_num += 1
-
-                progbar.update(iter_num, [('rpn_cls', np.mean(losses[:iter_num, 0])), ('rpn_regr', np.mean(losses[:iter_num, 1])),
-                                          ('detector_cls', np.mean(losses[:iter_num, 2])), ('detector_regr', np.mean(losses[:iter_num, 3]))])
-
+                progbar.update(iter_num, [('rpn_cls', np.mean(losses[:iter_num, 0])),
+                                          ('rpn_regr', np.mean(losses[:iter_num, 1])),
+                                          ('detector_cls', np.mean(losses[:iter_num, 2])),
+                                          ('detector_regr', np.mean(losses[:iter_num, 3])),
+                                          ('mask_loss', np.mean(losses[:iter_num, 4])),
+                                          ('mask_acc', np.mean(losses[:iter_num, 5]))])
                 if iter_num == epoch_length:
                     loss_rpn_cls = np.mean(losses[:, 0])
                     loss_rpn_regr = np.mean(losses[:, 1])
@@ -341,16 +367,20 @@ if __name__ == '__main__':
                     loss_class_regr = np.mean(losses[:, 3])
                     class_acc = np.mean(losses[:, 4])
 
+                    mask_loss = np.mean(losses[:, 5])
+                    mask_acc  = np.mean(losses[:, 6])
+
                     mean_overlapping_bboxes = float(sum(rpn_accuracy_for_epoch)) / len(rpn_accuracy_for_epoch)
                     rpn_accuracy_for_epoch = []
 
                     if C.verbose:
-                        print('Mean number of bounding boxes from RPN overlapping ground truth boxes: {}'.format(mean_overlapping_bboxes))
-                        print('Classifier accuracy for bounding boxes from RPN: {}'.format(class_acc))
-                        print('Loss RPN classifier: {}'.format(loss_rpn_cls))
-                        print('Loss RPN regression: {}'.format(loss_rpn_regr))
-                        print('Loss Detector classifier: {}'.format(loss_class_cls))
-                        print('Loss Detector regression: {}'.format(loss_class_regr))
+                        print('*** Mean number of bounding boxes from RPN overlapping ground truth boxes: {}'.format(mean_overlapping_bboxes))
+                        print('\tClassifier accuracy for bounding boxes from RPN: {}'.format(class_acc))
+                        print('\tLoss RPN classifier: {}'.format(loss_rpn_cls))
+                        print('\tLoss RPN regression: {}'.format(loss_rpn_regr))
+                        print('\tLoss Detector classifier: {}'.format(loss_class_cls))
+                        print('\tLoss Detector regression: {}'.format(loss_class_regr))
+                        print('\tLoss/Accuracy segmentation-mask: {0}/{1}'.format(mask_loss, mask_acc))
                         print('Elapsed time: {}'.format(time.time() - start_time))
 
                     curr_loss = loss_rpn_cls + loss_rpn_regr + loss_class_cls + loss_class_regr

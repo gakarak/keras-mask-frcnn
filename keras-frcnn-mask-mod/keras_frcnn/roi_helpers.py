@@ -5,6 +5,16 @@ import math
 from . import data_generators
 import copy
 
+def checkROI(px, py, pw, ph, img_w, img_h):
+    if px < 0:
+        px = 0
+    if py < 0:
+        py = 0
+    if (px + pw) >= img_w:
+        px = img_w - pw - 1
+    if (py + ph) >= img_h:
+        py = img_h - ph - 1
+    return (px, py, pw, ph)
 
 def calc_iou(R, img_data, C, class_mapping, isRounded=True):
 
