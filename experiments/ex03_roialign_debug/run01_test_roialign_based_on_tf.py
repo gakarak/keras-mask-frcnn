@@ -81,6 +81,8 @@ class RoiAligngConv_V1(Layer):
                                        tmp_bboxes,
                                        crop_size=[self.pool_size, self.pool_size],
                                        box_ind=tmp_bidx) #FIXME: explicit bix-index if 1-batch training
+        # ret = K.reshape(ret, (1, self.num_rois, self.pool_size, self.pool_size, self.nb_channels))
+        # ret = K.zeros((self.num_rois, self.pool_size, self.pool_size, self.nb_channels), dtype='float32')
         ret = K.reshape(ret, (1, self.num_rois, self.pool_size, self.pool_size, self.nb_channels))
         return ret
 
@@ -105,10 +107,11 @@ if __name__ == '__main__':
     nrow, ncol = img.shape
     numROI = 8
     poolSize = 64
-    dataROI = np.expand_dims(np.array([[1,1, ncol/2, nrow/2] for xx in range(numROI)]), axis=0).astype(np.float32)
+    dataROI = np.expand_dims(np.array([[1,1, poolSize, poolSize] for xx in range(numROI)]), axis=0).astype(np.float32)
     inpShape = dataImg.shape[1:]
     #
     model = buildTestNet(inpShape=inpShape, num_roi=numROI, pool_size=poolSize)
     model.summary()
+    model.compile(optimizer='sgd', loss='mae')
     tret = model.predict_on_batch([dataImg, dataROI])
     print ('-')
