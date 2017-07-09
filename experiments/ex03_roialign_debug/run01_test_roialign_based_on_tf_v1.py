@@ -101,6 +101,9 @@ def buildTestNet(inpShape=(256,256,1), num_roi=8, pool_size=64):
     inpDataImg = Input(shape=inpShape)
     inpDataROI = Input(shape=(num_roi, 4))
     x = inpDataImg
+    # for ii in range(2):
+    #     x = Conv2D(filters=16, kernel_size=(5,5), padding='same')(x)
+    #     x = MaxPool2D(pool_size=(2,2))(x)
     x = RoiAligngConv_V1(pool_size=pool_size, num_rois=num_roi)([x, inpDataROI])
     # x = MaxPool2D(pool_size=(2, 2))(x)
     # x = MaxPool2D(pool_size=(2, 2))(x)
@@ -110,7 +113,8 @@ def buildTestNet(inpShape=(256,256,1), num_roi=8, pool_size=64):
 
 #####################################
 if __name__ == '__main__':
-    fimg = '../../data/doge2.jpg'
+    # fimg = '../../data/doge2.jpg'
+    fimg = '../../data/make_america_1.jpg'
     img = skio.imread(fimg, as_grey=True)
 
     dataImg = np.reshape(img, [1] + list(img.shape) + [1]).astype(np.float32)
@@ -118,7 +122,7 @@ if __name__ == '__main__':
     nrow, ncol = img.shape
     numROI = 8
     poolSize = 128
-    dataROI = np.expand_dims(np.array([[1,1, poolSize, poolSize] for xx in range(numROI)]), axis=0).astype(np.float32)
+    dataROI = np.expand_dims(np.array([[1,1, ncol-2, nrow-2] for xx in range(numROI)]), axis=0).astype(np.float32)
     inpShape = dataImg.shape[1:]
     #
     model = buildTestNet(inpShape=inpShape, num_roi=numROI, pool_size=poolSize)
