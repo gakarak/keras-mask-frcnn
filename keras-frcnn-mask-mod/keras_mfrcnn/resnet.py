@@ -16,9 +16,9 @@ from keras import backend as K
 import keras
 import keras.utils
 
-from keras_frcnn.RoiPoolingConv import RoiPoolingConv
-from keras_frcnn.RoiAlignConv_V1 import RoiAligngConv_V1
-from keras_frcnn.FixedBatchNormalization import FixedBatchNormalization
+from keras_mfrcnn.RoiPoolingConv import RoiPoolingConv
+from keras_mfrcnn.RoiAlignConv_V1 import RoiAligngConv_V1
+from keras_mfrcnn.FixedBatchNormalization import FixedBatchNormalization
 
 def identity_block(input_tensor, kernel_size, filters, stage, block, trainable=True):
 
@@ -228,8 +228,8 @@ def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=Fal
         input_shape = (num_rois,1024,7,7)
     else:
         raise Exception('Unknown (unsupported) Keras backend!')
-    # out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
-    out_roi_pool = RoiAligngConv_V1(pooling_regions, num_rois)([base_layers, input_rois])
+    out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
+    # out_roi_pool = RoiAligngConv_V1(pooling_regions, num_rois)([base_layers, input_rois])
     out = classifier_layers(out_roi_pool, input_shape=input_shape, trainable=True)
     out = TimeDistributed(Flatten())(out)
     out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
@@ -248,8 +248,8 @@ def maskout(base_layers, input_rois, num_rois, num_upsampl = 2, size_upsampl = (
         # input_shape = (num_rois,1024,7,7)
     else:
         raise Exception('Unknown (unsupported) Keras backend!')
-    # out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
-    out_roi_pool = RoiAligngConv_V1(pooling_regions, num_rois)([base_layers, input_rois])
+    out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
+    # out_roi_pool = RoiAligngConv_V1(pooling_regions, num_rois)([base_layers, input_rois])
     x = out_roi_pool
     for xx in range(2):
         x = TimeDistributed(UpSampling2D(size=size_upsampl))(x)

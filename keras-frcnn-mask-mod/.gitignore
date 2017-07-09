@@ -92,3 +92,5 @@ ENV/
 *.png
 *.pickle
 /tmp_results/
+*.hdf5
+*.pickle_bk

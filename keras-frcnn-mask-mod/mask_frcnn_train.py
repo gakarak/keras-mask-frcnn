@@ -14,10 +14,10 @@ from keras import backend as K
 from keras.optimizers import Adam, SGD, RMSprop
 from keras.layers import Input
 from keras.models import Model
-from keras_frcnn import config, data_generators, data_generators_mask
-from keras_frcnn import losses as losses
-from keras_frcnn import resnet as nn
-import keras_frcnn.roi_helpers as roi_helpers
+from keras_mfrcnn import config, data_generators, data_generators_mask
+from keras_mfrcnn import losses as losses
+from keras_mfrcnn import resnet as nn
+import keras_mfrcnn.roi_helpers as roi_helpers
 from keras.utils import generic_utils
 import cv2
 
@@ -71,16 +71,16 @@ def parseArgs(pargs):
     "Location to store all the metadata related to the training (to be used when testing).",
                       default="config.pickle")
     parser.add_option("--output_weight_path", dest="output_weight_path", help="Output path for weights.",
-                      default='./model_frcnn.hdf5')
+                      default='./model_mask_frcnn')
     parser.add_option("--input_weight_path", dest="input_weight_path",
                       help="Input path for weights. If not specified, will try to load default weights provided by keras.")
     (options, args) = parser.parse_args(pargs)
     if not options.train_path:   # if filename is not given
         parser.error('Error: path to training data must be specified. Pass --path to command line')
     if options.parser == 'pascal_voc':
-        from keras_frcnn.pascal_voc_parser import get_data
+        from keras_mfrcnn.pascal_voc_parser import get_data
     elif options.parser == 'simple':
-        from keras_frcnn.simple_parser import get_data
+        from keras_mfrcnn.simple_parser import get_data
     else:
         raise ValueError("Command line option parser must be one of 'pascal_voc' or 'simple'")
     return (options, args)
@@ -91,9 +91,9 @@ if __name__ == '__main__':
     #
     (options, args) = parseArgs(sys.argv)
     if options.parser == 'pascal_voc':
-        from keras_frcnn.pascal_voc_parser import get_data
+        from keras_mfrcnn.pascal_voc_parser import get_data
     elif options.parser == 'simple':
-        from keras_frcnn.simple_parser import get_data
+        from keras_mfrcnn.simple_parser import get_data
     else:
         raise ValueError("Command line option parser must be one of 'pascal_voc' or 'simple'")
     # pass the settings from the command line, and persist them in the config object
@@ -103,7 +103,8 @@ if __name__ == '__main__':
     C.use_horizontal_flips = bool(options.horizontal_flips)
     C.use_vertical_flips = bool(options.vertical_flips)
     C.rot_90 = bool(options.rot_90)
-    C.model_path = options.output_weight_path
+    C.model_path_best = '{0}_best.h5'.format(options.output_weight_path)
+    C.model_path_iter = '{0}_ep%05d.h5'.format(options.output_weight_path)
     if options.input_weight_path:
         C.base_net_weights = options.input_weight_path
 
@@ -245,7 +246,7 @@ if __name__ == '__main__':
         progbar = generic_utils.Progbar(epoch_length)
         print('Epoch {}/{}'.format(epoch_num + 1, num_epochs))
 
-        isRoundRoiPool = False
+        isRoundRoiPool = True
         while True:
             try:
                 if len(rpn_accuracy_rpn_monitor) == epoch_length and C.verbose:
@@ -270,8 +271,8 @@ if __name__ == '__main__':
                                            isRounded=isRoundRoiPool)
 
                 # note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
-                X2, Y1, Y2, BBOX_IDX = roi_helpers.calc_iou(R, img_data, C, class_mapping,
-                                                            isRounded=isRoundRoiPool)
+                X2, Y1, Y2, BBOX_IDX = roi_helpers.calc_iou_mask(R, img_data, C, class_mapping,
+                                                                 isRounded=isRoundRoiPool)
 
                 if X2 is None:
                     rpn_accuracy_rpn_monitor.append(0)
@@ -338,7 +339,7 @@ if __name__ == '__main__':
                         tmsk_i_crop = tmsk_i[tbbox_y:tbbox_y + tbbox_h, tbbox_x:tbbox_x + tbbox_w]
                         tmsk_i_crop_resiz = cv2.resize(tmsk_i_crop, (sizeOutMask, sizeOutMask), interpolation=cv2.INTER_NEAREST)
                         gt_msk_i[ismplIdx,:,:,tclsIdx] = tmsk_i_crop_resiz
-                print ('-')
+                # print ('-')
 
                 loss_class = model_classifier.train_on_batch([X, X2[:, sel_samples, :]], [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
                 loss_mask  = model_maskout.train_on_batch([X, X2[:, sel_samples, :]], np.expand_dims(gt_msk_i.reshape([gt_msk_i.shape[0],-1]), axis=0))
@@ -383,17 +384,21 @@ if __name__ == '__main__':
                         print('\tLoss/Accuracy segmentation-mask: {0}/{1}'.format(mask_loss, mask_acc))
                         print('Elapsed time: {}'.format(time.time() - start_time))
 
-                    curr_loss = loss_rpn_cls + loss_rpn_regr + loss_class_cls + loss_class_regr
+                    curr_loss = loss_rpn_cls + loss_rpn_regr + loss_class_cls + loss_class_regr + mask_loss
                     iter_num = 0
                     start_time = time.time()
 
+                    # saving best model
                     if curr_loss < best_loss:
                         if C.verbose:
                             print('Total loss decreased from {} to {}, saving weights'.format(best_loss,curr_loss))
                         best_loss = curr_loss
-                        model_all.save_weights(C.model_path)
-
+                        model_all.save_weights(C.model_path_best)
                     break
+
+                    # saving model per epoch
+                    fmodel_epoch = C.model_path_iter % epoch_num
+                    model_all.save_weights(fmodel_epoch)
 
             except Exception as e:
                 print('Exception: {}'.format(e))

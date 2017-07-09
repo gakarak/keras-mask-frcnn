@@ -16,7 +16,7 @@ def checkROI(px, py, pw, ph, img_w, img_h):
         py = img_h - ph - 1
     return (px, py, pw, ph)
 
-def calc_iou(R, img_data, C, class_mapping, isRounded=True):
+def calc_iou_mask(R, img_data, C, class_mapping, isRounded=True):
 
     bboxes = img_data['bboxes']
     (width, height) = (img_data['width'], img_data['height'])

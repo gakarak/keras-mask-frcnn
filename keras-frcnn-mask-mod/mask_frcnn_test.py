@@ -94,6 +94,9 @@ print(class_mapping)
 class_to_color = {class_mapping[v]: np.random.randint(0, 255, 3) for v in class_mapping}
 C.num_rois = int(options.num_rois)
 
+numClasses = len(C.class_mapping)
+numClassesFG = len(C.class_mapping) - 1
+
 if K.image_dim_ordering() == 'th':
     input_shape_img = (3, None, None)
     input_shape_features = (1024, None, None)
@@ -114,17 +117,22 @@ num_anchors = len(C.anchor_box_scales) * len(C.anchor_box_ratios)
 rpn_layers = nn.rpn(shared_layers, num_anchors)
 
 classifier = nn.classifier(feature_map_input, roi_input, C.num_rois, nb_classes=len(class_mapping), trainable=True)
+maskout = nn.maskout(feature_map_input, roi_input, C.num_rois, nb_classes=numClassesFG, trainable=True)
 
 model_rpn = Model(img_input, rpn_layers)
 model_classifier_only = Model([feature_map_input, roi_input], classifier)
+model_maskout = Model([feature_map_input, roi_input], maskout)
+# model_maskout_only = Model([feature_map_input, roi_input], maskout)
 
 model_classifier = Model([feature_map_input, roi_input], classifier)
 
 model_rpn.load_weights(C.model_path_best, by_name=True)
 model_classifier.load_weights(C.model_path_best, by_name=True)
+model_maskout.load_weights(C.model_path_best, by_name=True)
 
 model_rpn.compile(optimizer='sgd', loss='mse')
 model_classifier.compile(optimizer='sgd', loss='mse')
+model_maskout.compile(optimizer='sgd', loss='mse') #FIXME: fake 'compiling' parameters
 
 all_imgs = []
 
@@ -163,6 +171,7 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
     # apply the spatial pyramid pooling to the proposed regions
     bboxes = {}
     probs = {}
+    masks = {}
 
     for jk in range(R.shape[0]//C.num_rois + 1):
         ROIs = np.expand_dims(R[C.num_rois*jk:C.num_rois*(jk+1), :], axis=0)
@@ -179,6 +188,7 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
             ROIs = ROIs_padded
 
         [P_cls, P_regr] = model_classifier_only.predict([F, ROIs])
+        retMask = model_maskout.predict([F, ROIs]).reshape([C.num_rois, C.maskSize, C.maskSize, numClassesFG])
 
         for ii in range(P_cls.shape[1]):
 
@@ -190,6 +200,7 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
             if cls_name not in bboxes:
                 bboxes[cls_name] = []
                 probs[cls_name] = []
+                masks[cls_name] = []
 
             (x, y, w, h) = ROIs[0, ii, :]
 
@@ -203,7 +214,9 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
                 x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
             except:
                 pass
-            bboxes[cls_name].append([C.rpn_stride*x, C.rpn_stride*y, C.rpn_stride*(x+w), C.rpn_stride*(y+h)])
+            tmsk = retMask[ii]
+            x1y1x2y2 = [C.rpn_stride*x, C.rpn_stride*y, C.rpn_stride*(x+w), C.rpn_stride*(y+h)]
+            bboxes[cls_name].append(x1y1x2y2)
             probs[cls_name].append(np.max(P_cls[0, ii, :]))
 
     all_dets = []
