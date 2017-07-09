@@ -56,17 +56,20 @@ class RoiAligngConv_V1(Layer):
         if self.dim_ordering == 'th':
             return None, self.num_rois, self.nb_channels, self.pool_size, self.pool_size
         else:
-            return None, self.num_rois, self.pool_size, self.pool_size, self.nb_channels
+            # return None, self.num_rois, self.pool_size, self.pool_size, self.nb_channels
+            return None, self.num_rois, 4
     def call(self, x, mask=None):
         assert(len(x) == 2)
         img = x[0]
         rois = x[1]
-        input_shape = K.shape(img)
-        siz_h = K.cast(input_shape[0], tf.float32)
-        siz_w = K.cast(input_shape[1], tf.float32)
+        input_shape = K.cast(K.shape(img), 'float32')
+        siz_h = K.cast(input_shape[1], tf.float32)
+        siz_w = K.cast(input_shape[2], tf.float32)
+        # tmp_bboxes = tf.zeros((self.num_rois, 4), tf.float32)
         tmp_bboxes = []
         tmp_bidx = [0] * self.num_rois
-        for roi_idx in range(self.num_rois):
+        # tmp_bboxes.append((input_shape[0], input_shape[1], input_shape[2], input_shape[3]))
+        for roi_idx in range(self.num_rois-0):
             x = rois[0, roi_idx, 0]
             y = rois[0, roi_idx, 1]
             w = rois[0, roi_idx, 2]
@@ -76,14 +79,21 @@ class RoiAligngConv_V1(Layer):
             x2 = (x + w) / (siz_w - 1.)
             y2 = (y + h) / (siz_h - 1.)
             tmp_bboxes.append([y1, x1, y2, x2])
+            # tmp_bboxes[roi_idx, 0] = x1
+            # tmp_bboxes[roi_idx, 1] = y1
+            # tmp_bboxes[roi_idx, 2] = x2
+            # tmp_bboxes[roi_idx, 3] = y2
+        tmp_bboxes = K.stack(tmp_bboxes)
         # k_bboxes = K.concatenate(tmp_bboxes, axis=1)
         ret = tf.image.crop_and_resize(img,
                                        tmp_bboxes,
                                        crop_size=[self.pool_size, self.pool_size],
                                        box_ind=tmp_bidx) #FIXME: explicit bix-index if 1-batch training
+        ret = K.reshape(ret, (1, self.num_rois, self.pool_size, self.pool_size, self.nb_channels))
+        # ret = K.zeros((self.num_rois, self.pool_size, self.pool_size, self.nb_channels), dtype='float32')
         # ret = K.reshape(ret, (1, self.num_rois, self.pool_size, self.pool_size, self.nb_channels))
         # ret = K.zeros((self.num_rois, self.pool_size, self.pool_size, self.nb_channels), dtype='float32')
-        ret = K.reshape(ret, (1, self.num_rois, self.pool_size, self.pool_size, self.nb_channels))
+        # ret = K.reshape(tmp_bboxes, (1, self.num_rois, 4))
         return ret
 
 #####################################
@@ -102,11 +112,12 @@ def buildTestNet(inpShape=(256,256,1), num_roi=8, pool_size=64):
 if __name__ == '__main__':
     fimg = '../../data/doge2.jpg'
     img = skio.imread(fimg, as_grey=True)
+
     dataImg = np.reshape(img, [1] + list(img.shape) + [1]).astype(np.float32)
     #
     nrow, ncol = img.shape
     numROI = 8
-    poolSize = 64
+    poolSize = 128
     dataROI = np.expand_dims(np.array([[1,1, poolSize, poolSize] for xx in range(numROI)]), axis=0).astype(np.float32)
     inpShape = dataImg.shape[1:]
     #
