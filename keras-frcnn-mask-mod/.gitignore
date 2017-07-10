@@ -94,3 +94,4 @@ ENV/
 /tmp_results/
 *.hdf5
 *.pickle_bk
+*.h5_ROIPooling

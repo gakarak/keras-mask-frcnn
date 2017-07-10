@@ -246,7 +246,7 @@ if __name__ == '__main__':
         progbar = generic_utils.Progbar(epoch_length)
         print('Epoch {}/{}'.format(epoch_num + 1, num_epochs))
 
-        isRoundRoiPool = True
+        isRoundRoiPool = False
         while True:
             try:
                 if len(rpn_accuracy_rpn_monitor) == epoch_length and C.verbose:
@@ -359,8 +359,8 @@ if __name__ == '__main__':
                                           ('rpn_regr', np.mean(losses[:iter_num, 1])),
                                           ('detector_cls', np.mean(losses[:iter_num, 2])),
                                           ('detector_regr', np.mean(losses[:iter_num, 3])),
-                                          ('mask_loss', np.mean(losses[:iter_num, 4])),
-                                          ('mask_acc', np.mean(losses[:iter_num, 5]))])
+                                          ('mask_loss', np.mean(losses[:iter_num, 5])),
+                                          ('mask_acc', np.mean(losses[:iter_num, 6]))])
                 if iter_num == epoch_length:
                     loss_rpn_cls = np.mean(losses[:, 0])
                     loss_rpn_regr = np.mean(losses[:, 1])
@@ -394,11 +394,13 @@ if __name__ == '__main__':
                             print('Total loss decreased from {} to {}, saving weights'.format(best_loss,curr_loss))
                         best_loss = curr_loss
                         model_all.save_weights(C.model_path_best)
-                    break
 
                     # saving model per epoch
                     fmodel_epoch = C.model_path_iter % epoch_num
                     model_all.save_weights(fmodel_epoch)
+
+
+                    break
 
             except Exception as e:
                 print('Exception: {}'.format(e))

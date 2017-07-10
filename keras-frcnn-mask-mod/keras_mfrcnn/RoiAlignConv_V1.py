@@ -56,8 +56,8 @@ class RoiAligngConv_V1(Layer):
         rois = x[1]
 
         input_shape = K.shape(img)
-        siz_h = K.cast(input_shape[0], tf.float32)
-        siz_w = K.cast(input_shape[1], tf.float32)
+        siz_h = K.cast(input_shape[1], tf.float32)
+        siz_w = K.cast(input_shape[2], tf.float32)
         tmp_bboxes = []
         tmp_bidx = [0] * self.num_rois
         for roi_idx in range(self.num_rois):
