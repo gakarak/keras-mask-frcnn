@@ -13,6 +13,8 @@ from keras.layers import Input
 from keras.models import Model
 from keras_mfrcnn import roi_helpers
 
+import matplotlib.pyplot as plt
+
 sys.setrecursionlimit(40000)
 
 parser = OptionParser()
@@ -140,6 +142,9 @@ classes = {}
 
 bbox_threshold = 0.5
 
+isDebug = False
+isRounded = True
+
 visualise = True
 
 for idx, img_name in enumerate(sorted(os.listdir(img_path))):
@@ -195,7 +200,8 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
             if np.max(P_cls[0, ii, :]) < bbox_threshold or np.argmax(P_cls[0, ii, :]) == (P_cls.shape[2] - 1):
                 continue
 
-            cls_name = class_mapping[np.argmax(P_cls[0, ii, :])]
+            cls_num = np.argmax(P_cls[0, ii, :])
+            cls_name = class_mapping[cls_num]
 
             if cls_name not in bboxes:
                 bboxes[cls_name] = []
@@ -204,7 +210,7 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
 
             (x, y, w, h) = ROIs[0, ii, :]
 
-            cls_num = np.argmax(P_cls[0, ii, :])
+
             try:
                 (tx, ty, tw, th) = P_regr[0, ii, 4*cls_num:4*(cls_num+1)]
                 tx /= C.classifier_regr_std[0]
@@ -218,19 +224,47 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
             x1y1x2y2 = [C.rpn_stride*x, C.rpn_stride*y, C.rpn_stride*(x+w), C.rpn_stride*(y+h)]
             bboxes[cls_name].append(x1y1x2y2)
             probs[cls_name].append(np.max(P_cls[0, ii, :]))
+            masks[cls_name].append(tmsk[:,:,cls_num])
 
     all_dets = []
 
     for key in bboxes:
         bbox = np.array(bboxes[key])
 
-        new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox, np.array(probs[key]), overlap_thresh=0.5)
+        new_boxes, new_probs, idx_selected = roi_helpers.non_max_suppression_fast(bbox,
+                                                                    np.array(probs[key]),
+                                                                    overlap_thresh=0.5,
+                                                                    isRounded=isRounded)
+        cnt = 0
         for jk in range(new_boxes.shape[0]):
             (x1, y1, x2, y2) = new_boxes[jk,:]
 
             (real_x1, real_y1, real_x2, real_y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
 
+            box_mask = masks[key][idx_selected[jk]]
+
+            dx = int(real_x2 - real_x1)
+            dy = int(real_y2 - real_y1)
+            if dx<2:
+                dx = 2
+            if dy<2:
+                dy = 2
+
+            box_mask_r = cv2.resize(box_mask, (dx, dy))
+            tout_msk = np.zeros(img.shape[:2], dtype=np.uint8)
+            tout_prv = img.copy()
+            dy_ = min(dy, box_mask_r.shape[0])
+            dx_ = min(dx, box_mask_r.shape[1])
+            try:
+                tout_msk[real_y1:real_y1+dy_, real_x1:real_x1+dx_] = (255.*box_mask_r[:dy_, :dx_]).astype(np.uint8)
+                tout_prv[:,:,2] = tout_msk
+            except Exception as err:
+                print ('!!!ERROR!!! : [{0}]'.format(err))
+                continue
+
             cv2.rectangle(img,(real_x1, real_y1), (real_x2, real_y2), (int(class_to_color[key][0]), int(class_to_color[key][1]), int(class_to_color[key][2])),2)
+            cv2.rectangle(tout_msk, (real_x1, real_y1), (real_x2, real_y2), (int(class_to_color[key][0]), int(class_to_color[key][1]), int(class_to_color[key][2])), 2)
+            cv2.rectangle(tout_prv, (real_x1, real_y1), (real_x2, real_y2), (int(class_to_color[key][0]), int(class_to_color[key][1]), int(class_to_color[key][2])), 2)
 
             textLabel = '{}: {}'.format(key,int(100*new_probs[jk]))
             all_dets.append((key,100*new_probs[jk]))
@@ -241,9 +275,32 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
             cv2.rectangle(img, (textOrg[0] - 5, textOrg[1]+baseLine - 5), (textOrg[0]+retval[0] + 5, textOrg[1]-retval[1] - 5), (0, 0, 0), 2)
             cv2.rectangle(img, (textOrg[0] - 5,textOrg[1]+baseLine - 5), (textOrg[0]+retval[0] + 5, textOrg[1]-retval[1] - 5), (255, 255, 255), -1)
             cv2.putText(img, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
+            #
+            #
+            cv2.rectangle(tout_msk, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
+                          (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (0, 0, 0), 2)
+            cv2.rectangle(tout_prv, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
+                          (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (255, 255, 255), -1)
+            #
+            cv2.rectangle(tout_msk, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
+                          (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (0, 0, 0), 2)
+            cv2.rectangle(tout_prv, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
+                          (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (255, 255, 255), -1)
+            #
+            cv2.putText(tout_msk, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
+            cv2.putText(tout_prv, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
 
+            fout_msk = '{0}-{1:03d}-{2}-msk.png'.format(filepath, cnt, key)
+            fout_prv = '{0}-{1:03d}-{2}-prv.png'.format(filepath, cnt, key)
+            cv2.imwrite(fout_msk, tout_msk)
+            cv2.imwrite(fout_prv, tout_prv)
+            cnt +=1
+            print ('-')
     print('Elapsed time = {}'.format(time.time() - st))
     print(all_dets)
-    cv2.imshow('img', img)
-    cv2.waitKey(0)
+    if isDebug:
+        plt.imshow(img)
+        plt.show()
+    # cv2.imshow('img', img)
+    # cv2.waitKey(0)
     # cv2.imwrite('./results_imgs/{}.png'.format(idx),img)
