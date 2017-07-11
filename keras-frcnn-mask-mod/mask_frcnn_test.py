@@ -142,8 +142,8 @@ classes = {}
 
 bbox_threshold = 0.5
 
-isDebug = False
-isRounded = True
+isDebug = True
+isRounded = False
 
 visualise = True
 
@@ -292,8 +292,15 @@ for idx, img_name in enumerate(sorted(os.listdir(img_path))):
 
             fout_msk = '{0}-{1:03d}-{2}-msk.png'.format(filepath, cnt, key)
             fout_prv = '{0}-{1:03d}-{2}-prv.png'.format(filepath, cnt, key)
-            cv2.imwrite(fout_msk, tout_msk)
-            cv2.imwrite(fout_prv, tout_prv)
+            if isDebug:
+                plt.subplot(1, 2, 1)
+                plt.imshow(tout_msk)
+                plt.subplot(1, 2, 2)
+                plt.imshow(tout_prv)
+                plt.show()
+            else:
+                cv2.imwrite(fout_msk, tout_msk)
+                cv2.imwrite(fout_prv, tout_prv)
             cnt +=1
             print ('-')
     print('Elapsed time = {}'.format(time.time() - st))
