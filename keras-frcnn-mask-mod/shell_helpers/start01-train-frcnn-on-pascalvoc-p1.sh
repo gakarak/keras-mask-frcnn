@@ -1,12 +1,17 @@
 #!/bin/bash
 
+if [ -f ~/pyenv/env-keras2/bin/activate ]; then
+    source ~/pyenv/env-keras2/bin/activate
+fi
+
 runpy="${PWD}/../frcnn_mod_train.py"
 pydir=`dirname ${runpy}`
 
 export PYTHONPATH="${pydir}:${PYTHONPATH}"
 export CUDA_VISIBLE_DEVICES=0
 
-dataDir='/home/ar/prj_datamola/keras-frcnn.git/data/VOCdevkit'
+##dataDir='/home/ar/prj_datamola/keras-frcnn.git/data/VOCdevkit'
+dataDir='/media/data/datasets/detection_frcnn/data_PascalVOC/VOCdevkit'
 dataTyp='pascal_voc'
 ##dataTyp='simple'
 
