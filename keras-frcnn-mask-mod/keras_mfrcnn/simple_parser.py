@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 
+import os
+
 def get_data(input_path):
     found_bg = False
     all_imgs = {}
@@ -10,6 +12,7 @@ def get_data(input_path):
     class_mapping = {}
 
     visualise = True
+    imgDir = os.path.dirname(input_path)
 
     with open(input_path,'r') as f:
 
@@ -18,6 +21,8 @@ def get_data(input_path):
         for line in f:
             line_split = line.strip().split(',')
             (filename,x1,y1,x2,y2,class_name) = line_split[:6]
+
+            filename = os.path.join(imgDir, filename)
 
             if class_name not in classes_count:
                 classes_count[class_name] = 1
