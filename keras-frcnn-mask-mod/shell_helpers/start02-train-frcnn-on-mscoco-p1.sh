@@ -8,7 +8,7 @@ runpy="${PWD}/../frcnn_mod_train.py"
 pydir=`dirname ${runpy}`
 
 export PYTHONPATH="${pydir}:${PYTHONPATH}"
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 ##dataDir='/home/ar/prj_datamola/keras-frcnn.git/data/VOCdevkit'
 dataDir='/media/data/datasets/detection_frcnn/data_MSCOCO/raw-data/train2014-idx-simple.txt'
